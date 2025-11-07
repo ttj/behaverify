@@ -1,0 +1,170 @@
+configuration {}
+enumerations {'north', 'south', 'east', 'west', 'pickup', 'toggle', 'idle'}
+constants {
+    grid_size := 5,
+    goal_x := 4,
+    goal_y := 4,
+    door_x := 2,
+    door_y := 2,
+    key_x := 1,
+    key_y := 1
+}
+variables {
+    variable { env agent_x VAR [0, grid_size] assign{result{0}}}
+    variable { env agent_y VAR [0, grid_size] assign{result{0}}}
+    variable { env has_key VAR BOOLEAN assign{result{False}}}
+    variable { env door_open VAR BOOLEAN assign{result{False}}}
+    variable { env action VAR {'north', 'south', 'east', 'west', 'pickup', 'toggle', 'idle'} assign{result{'north', 'south', 'east', 'west', 'pickup', 'toggle', 'idle'}}}
+    variable { env at_goal VAR BOOLEAN assign{result{False}}}
+}
+
+environment_update {
+    variable_statement { action assign{result{'north', 'south', 'east', 'west', 'pickup', 'toggle', 'idle'}}}
+
+    variable_statement { agent_x assign{
+        case{(and, (eq, action, 'east'), (lt, agent_x, grid_size))} result{(min, grid_size, (add, agent_x, 1))}
+        case{(and, (eq, action, 'west'), (gt, agent_x, 0))} result{(max, 0, (add, agent_x, -1))}
+        result{agent_x}
+    }}
+
+    variable_statement { agent_y assign{
+        case{(and, (eq, action, 'north'), (lt, agent_y, grid_size))} result{(min, grid_size, (add, agent_y, 1))}
+        case{(and, (eq, action, 'south'), (gt, agent_y, 0))} result{(max, 0, (add, agent_y, -1))}
+        result{agent_y}
+    }}
+
+    variable_statement { has_key assign{
+        case{(and, (eq, action, 'pickup'), (eq, agent_x, key_x), (eq, agent_y, key_y), (not, has_key))} result{True}
+        result{has_key}
+    }}
+
+    variable_statement { door_open assign{
+        case{(and, (eq, action, 'toggle'), (eq, agent_x, door_x), (eq, agent_y, door_y), has_key)} result{True}
+        result{door_open}
+    }}
+
+    variable_statement { at_goal assign{
+        case{(and, (eq, agent_x, goal_x), (eq, agent_y, goal_y))} result{True}
+        result{at_goal}
+    }}
+}
+
+checks {}
+
+environment_checks {
+    environment_check {
+        at_key_location
+        arguments {} read_variables {agent_x, agent_y} condition {(and, (eq, agent_x, key_x), (eq, agent_y, key_y))}
+    }
+    environment_check {
+        have_key
+        arguments {} read_variables {has_key} condition {has_key}
+    }
+    environment_check {
+        at_door_location
+        arguments {} read_variables {agent_x, agent_y} condition {(and, (eq, agent_x, door_x), (eq, agent_y, door_y))}
+    }
+    environment_check {
+        is_door_open
+        arguments {} read_variables {door_open} condition {door_open}
+    }
+    environment_check {
+        at_goal_location
+        arguments {} read_variables {agent_x, agent_y} condition {(and, (eq, agent_x, goal_x), (eq, agent_y, goal_y))}
+    }
+    environment_check {
+        reached_goal
+        arguments {} read_variables {at_goal} condition {at_goal}
+    }
+}
+
+actions {
+    action {
+        move_to_key
+        arguments {} local_variables {} read_variables {agent_x, agent_y} write_variables {} initial_values{}
+        update {
+            return_statement {result{success}}
+        }
+    }
+    action {
+        pick_up_key
+        arguments {} local_variables {} read_variables {} write_variables {} initial_values{}
+        update {
+            return_statement {result{success}}
+        }
+    }
+    action {
+        move_to_door
+        arguments {} local_variables {} read_variables {agent_x, agent_y} write_variables {} initial_values{}
+        update {
+            return_statement {result{success}}
+        }
+    }
+    action {
+        open_door
+        arguments {} local_variables {} read_variables {} write_variables {} initial_values{}
+        update {
+            return_statement {result{success}}
+        }
+    }
+    action {
+        move_to_goal
+        arguments {} local_variables {} read_variables {agent_x, agent_y} write_variables {} initial_values{}
+        update {
+            return_statement {result{success}}
+        }
+    }
+}
+
+sub_trees {}
+
+tree {
+    composite {
+        root_node
+        sequence
+        children {
+            composite {
+                get_key
+                sequence
+                children {
+                    move_to_key {}
+                    decorator {
+                        check_at_key
+                        inverter
+                        child { have_key {} }
+                    }
+                    pick_up_key {}
+                }
+            }
+            composite {
+                unlock_door
+                sequence
+                children {
+                    move_to_door {}
+                    decorator {
+                        check_door_open
+                        inverter
+                        child { is_door_open {} }
+                    }
+                    open_door {}
+                }
+            }
+            composite {
+                reach_goal
+                sequence
+                children {
+                    move_to_goal {}
+                    reached_goal {}
+                }
+            }
+        }
+    }
+}
+
+tick_prerequisite {
+    (not, at_goal)
+}
+
+specifications {
+    LTLSPEC {(finally, at_goal)}
+}
