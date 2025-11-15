@@ -294,7 +294,7 @@ def dsl_to_cpp(metamodel_file, model_file, main_name, write_location, serene_pri
             + os.linesep
             + '#include <behaviortree_cpp/bt_factory.h>' + os.linesep
             + os.linesep
-            + 'class ' + node.name + ' : BT::ConditionNode {' + os.linesep
+            + 'class ' + node.name + ' : public BT::ConditionNode {' + os.linesep
             + indent(1) + 'private:' + os.linesep
             + ''.join(
                 (os.linesep).join(map(lambda arg_pair: indent(2) + to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name + ';', node.arguments))
@@ -340,38 +340,6 @@ def dsl_to_cpp(metamodel_file, model_file, main_name, write_location, serene_pri
         long_if_to_write = []
         return return_string
 
-    def init_method_environment_check(node):
-        # TODO: Upate this. Not updating this until I confirm things without the environment working.
-        return (indent(1) + 'def __init__(self, name, environment' + ((', ' + ', '.join(map(lambda arg_pair: arg_pair.argument_name, node.arguments))) if len(node.arguments) > 0 else '') + '):' + os.linesep
-                + ''.join(
-                    [
-                        (indent(2) + 'self.' + arg_pair.argument_name + ' = ' + arg_pair.argument_name + os.linesep)
-                        for arg_pair in node.arguments
-                    ]
-                )
-                + indent(2) + 'super(' + node.name + ', self).__init__(name)' + os.linesep
-                + (
-                    (indent(2) + "self.__serene_print__ = 'INVALID'" + os.linesep)
-                    if serene_print else
-                    ''
-                )
-                + indent(2) + 'self.name = name' + os.linesep
-                + indent(2) + 'self.environment = environment' + os.linesep
-                + indent(2) + 'self.blackboard = self.attach_blackboard_client(name = name)' + os.linesep
-                + ''.join([(indent(2) + 'self.blackboard.register_key(key = (\'' + variable.name + '\'), access = py_trees.common.Access.READ)' + os.linesep) for variable in node.read_variables])
-                + os.linesep)
-
-    def update_method_environment_check(node):
-        return (indent(1) + 'def update(self):' + os.linesep
-                + indent(2) + 'return_status = ((py_trees.common.Status.SUCCESS) if ('
-                + 'self.environment.' + node.name + '(self)'
-                + ') else (py_trees.common.Status.FAILURE))' + os.linesep
-                + (
-                    (indent(2) + "self.__serene_print__ = return_status.value" + os.linesep)
-                    if serene_print else
-                    ''
-                )
-                + indent(2) + 'return return_status' + os.linesep)
 
     randomizer_count = 0
     def add_new_randomizer(formatted_values):
@@ -944,7 +912,7 @@ def dsl_to_cpp(metamodel_file, model_file, main_name, write_location, serene_pri
             + os.linesep
             + '#include <behaviortree_cpp/bt_factory.h>' + os.linesep
             + os.linesep
-            + 'class ' + node.name + ' : BT::SyncActionNode {' + os.linesep
+            + 'class ' + node.name + ' : public BT::SyncActionNode {' + os.linesep
             + indent(1) + 'private:' + os.linesep
             + ''.join(
                 (os.linesep).join(map(lambda arg_pair: indent(2) + to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name + ';', node.arguments))
@@ -1005,16 +973,59 @@ def dsl_to_cpp(metamodel_file, model_file, main_name, write_location, serene_pri
         long_if_to_write = []
         return return_string
 
-    def build_environment_check_node(node):
+    def create_environment_check_node_header(node):
+        # Similar to regular check nodes, but will delegate to environment
+        return (
+            '#ifndef ' + node.name + '_header' + os.linesep
+            + '#define ' + node.name + '_header' + os.linesep
+            + os.linesep
+            + '#include <behaviortree_cpp/bt_factory.h>' + os.linesep
+            + os.linesep
+            + 'class Environment;' + os.linesep
+            + os.linesep
+            + 'class ' + node.name + ' : public BT::ConditionNode {' + os.linesep
+            + indent(1) + 'private:' + os.linesep
+            + indent(2) + 'Environment* environment;' + os.linesep
+            + ''.join(
+                (os.linesep).join(map(lambda arg_pair: indent(2) + to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name + ';', node.arguments))
+            ) + (os.linesep if len(node.arguments) > 0 else '')
+            + indent(1) + 'public:' + os.linesep
+            + indent(2) + node.name + '(const std::string& name, const BT::NodeConfiguration& config, Environment* env' + ((', ' + ', '.join(map(lambda arg_pair: to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name, node.arguments))) if len(node.arguments) > 0 else '') + ');' + os.linesep
+            + indent(2) + 'static BT::PortsList providedPorts();' + os.linesep
+            + indent(2) + 'BT::NodeStatus tick() override;' + os.linesep
+            + '};' + os.linesep
+            + os.linesep
+            + '#endif' + os.linesep
+        )
+
+    def create_environment_check_node_source_code(node):
         nonlocal long_if_to_write
         long_if_to_write = []
-        return_string = (standard_imports
-                + os.linesep + os.linesep
-                + class_definition(node.name)
-                + init_method_environment_check(node)
-                + update_method_environment_check(node)
-                + (os.linesep).join(long_if_to_write)
-                )
+        misc_args = create_misc_args(False, 'node', 1)
+        return_string = (
+            standard_imports
+            + os.linesep
+            + '#include "' + node.name + '.h"' + os.linesep
+            + '#include "Environment.h"' + os.linesep
+            + os.linesep
+            + node.name + '::' + node.name + '(const std::string& name, const BT::NodeConfiguration& config, Environment* env' + ((', ' + ', '.join(map(lambda arg_pair: to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name, node.arguments))) if len(node.arguments) > 0 else '') + ') : BT::ConditionNode(name, config), environment(env) {' + os.linesep
+            + (os.linesep).join(map(lambda arg_pair: indent(1) + 'this->' + arg_pair.argument_name + ' = arg_' + arg_pair.argument_name + ';', node.arguments)) + (os.linesep if len(node.arguments) > 0 else '')
+            + '}' + os.linesep
+            + os.linesep
+            + 'BT::PortsList ' + node.name + '::providedPorts() {' + os.linesep
+            + indent(1) + 'return {'
+            + (', ').join(map(lambda variable : 'BT::InputPort<' + variable_type_map[variable.name] + '>("' + variable.name + '")', node.read_variables))
+            + '};' + os.linesep
+            + '}' + os.linesep
+            + os.linesep
+            + 'BT::NodeStatus ' + node.name + '::tick() {' + os.linesep
+            + (os.linesep).join(map(lambda variable : make_blackboard_variable(variable, misc_args), node.read_variables))
+            + (os.linesep if len(node.read_variables) > 0 else '')
+            + indent(misc_args['indent_level']) + 'BT::NodeStatus return_status = ' + format_code(node.condition, misc_args)[0] + ' ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;' + os.linesep
+            + indent(misc_args['indent_level']) + 'return return_status;' + os.linesep
+            + '}' + os.linesep
+            + (os.linesep).join(long_if_to_write)
+        )
         long_if_to_write = []
         return return_string
 
@@ -1374,218 +1385,316 @@ def dsl_to_cpp(metamodel_file, model_file, main_name, write_location, serene_pri
             + indent(1) + 'run_tree()' + os.linesep
         )
 
+    def generate_tree_xml(node, indent_level=0):
+        """Generate XML representation of behavior tree structure for BehaviorTree.CPP"""
+        xml_indent = '  ' * indent_level
+
+        while hasattr(node, 'sub_root'):
+            node = node.sub_root
+
+        node_name = node.name if hasattr(node, 'name') and node.name is not None else node.leaf.name
+
+        if hasattr(node, 'leaf'):
+            arguments = node.arguments
+            current_node = node.leaf
+        else:
+            arguments = []
+            current_node = node
+
+        # Leaf nodes (check, environment_check, action)
+        if current_node.node_type in ('check', 'environment_check', 'action'):
+            # Build ports for the node
+            ports = []
+            if hasattr(current_node, 'read_variables'):
+                for var in current_node.read_variables:
+                    ports.append(var.name + '="{' + var.name + '}"')
+            if hasattr(current_node, 'write_variables'):
+                for var in current_node.write_variables:
+                    if var not in (current_node.read_variables if hasattr(current_node, 'read_variables') else []):
+                        ports.append(var.name + '="{' + var.name + '}"')
+
+            ports_str = ' ' + ' '.join(ports) if ports else ''
+            return f'{xml_indent}<{current_node.name} name="{node_name}"{ports_str}/>' + os.linesep
+
+        # Decorator nodes
+        if current_node.node_type == 'X_is_Y':
+            decorator_map = {
+                ('success', 'failure'): 'Inverter',
+                ('failure', 'success'): 'Inverter',
+                ('success', 'running'): 'ForceSuccess',
+                ('failure', 'running'): 'ForceFailure',
+            }
+            decorator_type = decorator_map.get((current_node.x.lower(), current_node.y.lower()), 'Inverter')
+            xml = f'{xml_indent}<{decorator_type} name="{node_name}">' + os.linesep
+            xml += generate_tree_xml(current_node.child, indent_level + 1)
+            xml += f'{xml_indent}</{decorator_type}>' + os.linesep
+            return xml
+
+        if current_node.node_type == 'inverter':
+            xml = f'{xml_indent}<Inverter name="{node_name}">' + os.linesep
+            xml += generate_tree_xml(current_node.child, indent_level + 1)
+            xml += f'{xml_indent}</Inverter>' + os.linesep
+            return xml
+
+        # Composite nodes
+        if current_node.node_type == 'sequence':
+            composite_type = 'SequenceWithMemory' if current_node.memory == 'with_partial_memory' else 'Sequence'
+            xml = f'{xml_indent}<{composite_type} name="{node_name}">' + os.linesep
+            for child in current_node.children:
+                xml += generate_tree_xml(child, indent_level + 1)
+            xml += f'{xml_indent}</{composite_type}>' + os.linesep
+            return xml
+
+        if current_node.node_type == 'selector':
+            composite_type = 'FallbackWithMemory' if current_node.memory == 'with_partial_memory' else 'Fallback'
+            xml = f'{xml_indent}<{composite_type} name="{node_name}">' + os.linesep
+            for child in current_node.children:
+                xml += generate_tree_xml(child, indent_level + 1)
+            xml += f'{xml_indent}</{composite_type}>' + os.linesep
+            return xml
+
+        if current_node.node_type == 'parallel':
+            policy = current_node.policy if hasattr(current_node, 'policy') else 'success_on_all'
+            threshold = '1' if 'one' in policy else str(len(current_node.children))
+            xml = f'{xml_indent}<Parallel name="{node_name}" threshold="{threshold}">' + os.linesep
+            for child in current_node.children:
+                xml += generate_tree_xml(child, indent_level + 1)
+            xml += f'{xml_indent}</Parallel>' + os.linesep
+            return xml
+
+        raise ValueError(f'Unknown node type: {current_node.node_type}')
+
+    def write_tree_xml(model):
+        """Generate complete XML tree file for BehaviorTree.CPP"""
+        xml = '<root BTCPP_format="4">' + os.linesep
+        xml += '  <BehaviorTree ID="MainTree">' + os.linesep
+        xml += generate_tree_xml(model.root, 2)
+        xml += '  </BehaviorTree>' + os.linesep
+        xml += '</root>' + os.linesep
+        return xml
+
     def write_blackboard(model, running_string):
+        """Generate main.cpp file for BehaviorTree.CPP"""
         initial_misc_args = create_misc_args(True, 'blackboard', 1)
+
+        # Generate includes for all node headers
+        includes = ''.join([
+            '#include "' + node.name + '.h"' + os.linesep
+            for node in itertools.chain(model.check_nodes, model.action_nodes, model.environment_checks)
+        ])
+
+        # Generate blackboard initialization code
+        init_code = ''
+        for variable in model.variables:
+            if is_blackboard(variable):
+                init_value = handle_assign(variable.default_value, initial_misc_args) if hasattr(variable, 'default_value') and variable.default_value is not None else '0'
+                init_code += indent(1) + 'blackboard->set<' + variable_type_map[variable.name] + '>("' + variable.name + '", ' + init_value + ');' + os.linesep
+
+        # Generate node registration code
+        registration_code = ''
+        for node in model.check_nodes:
+            registration_code += indent(1) + 'factory.registerNodeType<' + node.name + '>("' + node.name + '");' + os.linesep
+        for node in model.action_nodes:
+            registration_code += indent(1) + 'factory.registerNodeType<' + node.name + '>("' + node.name + '");' + os.linesep
+        for node in model.environment_checks:
+            # Environment checks need special registration with lambda to pass environment
+            registration_code += indent(1) + 'factory.registerBuilder<' + node.name + '>("' + node.name + '",' + os.linesep
+            registration_code += indent(2) + '[&environment](const std::string& name, const BT::NodeConfiguration& config) {' + os.linesep
+            registration_code += indent(3) + 'return std::make_unique<' + node.name + '>(name, config, &environment);' + os.linesep
+            registration_code += indent(2) + '});' + os.linesep
+
         return_string = (
-            'from pathlib import Path' + os.linesep
-            + 'import py_trees' + os.linesep
-            + ''.join([('import ' + node.name + '_file' + os.linesep) for node in itertools.chain(model.check_nodes, model.action_nodes, model.environment_checks)])
-            + (('import serene_safe_assignment' + os.linesep) if safe_assignment else '')
-            + (('import onnxruntime' + os.linesep) if model.neural is not None else '')
-            + os.linesep + os.linesep
-            + 'def create_blackboard(serene_randomizer):' + os.linesep
-            + indent(1) + 'blackboard_reader = py_trees.blackboard.Client()' + os.linesep
-            + indent(1) + 'blackboard_reader.register_key(key = ' + "'serene_randomizer'" + ', access = py_trees.common.Access.WRITE)' + os.linesep
-            + indent(1) + 'blackboard_reader.serene_randomizer = serene_randomizer' + os.linesep
-            + ''.join(
-                [
-                    (indent(1) + 'blackboard_reader.register_key(key = ' + "'" + blackboard_variable.name + "'" + ', access = py_trees.common.Access.WRITE)' + os.linesep
-                     + indent(1) + 'blackboard_reader.' + blackboard_variable.name + ' = None' + os.linesep)
-                    for blackboard_variable in model.variables if is_blackboard(blackboard_variable)
-                ]
-            )
-            + indent(1) + 'return blackboard_reader' + os.linesep + os.linesep
-            + 'def initialize_blackboard(blackboard_reader):' + os.linesep
-        )
-        sub_return_string = (
-            ''.join(
-                [
-                    create_neural_network(variable, initial_misc_args)
-                    if variable.model_as == 'NEURAL' else
-                    (
-                        create_variable_macro(variable, initial_misc_args)
-                        if variable.model_as == 'DEFINE' and variable.static != 'static' else
-                        (
-                            (
-                                (indent(1) + format_variable_name_only(variable, initial_misc_args) + ' = [' + (handle_assign(variable.default_value, initial_misc_args) if variable.iterative_assign != 'iterative_assign' else 'None') + ' for _ in range(' + str(variable_array_size_map[variable.name]) + ')]' + os.linesep)  # this handles the default value of the array. Then, we overwrite values as necessary using handle_Variable_statement.
-                                if is_array(variable) else
-                                ''
-                            ) +  handle_variable_statement(variable, initial_misc_args, assign_to_var = True)
-                        )
-                    )
-                    for variable in model.variables if is_blackboard(variable)
-                ]
-            )
-            + indent(1) + 'return' + os.linesep)
-        nonlocal long_if_to_write
-        long_if_statements = (os.linesep).join(long_if_to_write)
-        long_if_to_write = []
-        return_string += long_if_statements + sub_return_string
-        if serene_print:
-            overwrite_location = None
-            try:
-                overwrite_location = files('behaverify').joinpath('data', 'tick_overwrite', 'tick_overwrite.py')
-            except ModuleNotFoundError:
-                overwrite_location = os.path.dirname(os.path.realpath(__file__)) + '/data/tick_overwrite/tick_overwrite.py'
-                print('did not find module; attempted to find files directly')
-            with open(overwrite_location, 'r', encoding = 'utf-8') as read_file:
-                return_string += read_file.read()
-        return_string += (
-            os.linesep + os.linesep
-            + 'def create_tree(environment):' + os.linesep
-            + running_string
-            + indent(1) + 'return ' + root_name + os.linesep
+            standard_imports
+            + '#include "Environment.h"' + os.linesep
+            + includes
+            + os.linesep
+            + 'int main(int argc, char** argv) {' + os.linesep
+            + indent(1) + '// Create behavior tree factory' + os.linesep
+            + indent(1) + 'BT::BehaviorTreeFactory factory;' + os.linesep
+            + os.linesep
+            + indent(1) + '// Create environment' + os.linesep
+            + indent(1) + 'Environment environment;' + os.linesep
+            + os.linesep
+            + indent(1) + '// Register all custom nodes' + os.linesep
+            + registration_code
+            + os.linesep
+            + indent(1) + '// Create tree from XML' + os.linesep
+            + indent(1) + 'auto tree = factory.createTreeFromFile("tree.xml");' + os.linesep
+            + os.linesep
+            + indent(1) + '// Get blackboard and initialize variables' + os.linesep
+            + indent(1) + 'auto blackboard = tree.rootBlackboard();' + os.linesep
+            + init_code
+            + os.linesep
+            + indent(1) + '// Initialize environment' + os.linesep
+            + indent(1) + 'environment.initialize();' + os.linesep
+            + os.linesep
+            + indent(1) + '// Print initial state' + os.linesep
+            + indent(1) + 'std::cout << "------------------------" << std::endl;' + os.linesep
+            + indent(1) + 'std::cout << "Initial State" << std::endl;' + os.linesep
+            + ''.join([
+                indent(1) + 'std::cout << "' + var.name + ' = " << blackboard->get<' + variable_type_map[var.name] + '>("' + var.name + '") << std::endl;' + os.linesep
+                for var in model.variables if is_blackboard(var)
+            ])
+            + os.linesep
+            + indent(1) + '// Run tree for max iterations' + os.linesep
+            + indent(1) + 'for (int count = 0; count < ' + str(max_iter) + '; count++) {' + os.linesep
+            + indent(2) + 'std::cout << "------------------------" << std::endl;' + os.linesep
+            + indent(2) + 'std::cout << "Tick: " << (count + 1) << std::endl;' + os.linesep
+            + os.linesep
+            + indent(2) + 'if (!environment.check_tick_condition()) {' + os.linesep
+            + indent(3) + 'std::cout << "Tick condition no longer holds. Exiting." << std::endl;' + os.linesep
+            + indent(3) + 'break;' + os.linesep
+            + indent(2) + '}' + os.linesep
+            + os.linesep
+            + indent(2) + '// Pre-tick update' + os.linesep
+            + indent(2) + 'environment.pre_tick_update();' + os.linesep
+            + os.linesep
+            + indent(2) + '// Tick the tree' + os.linesep
+            + indent(2) + 'BT::NodeStatus status = tree.tickOnce();' + os.linesep
+            + os.linesep
+            + indent(2) + '// Post-tick update' + os.linesep
+            + indent(2) + 'environment.post_tick_update();' + os.linesep
+            + os.linesep
+            + indent(2) + '// Print state' + os.linesep
+            + indent(2) + 'std::cout << "Status: " << BT::toStr(status) << std::endl;' + os.linesep
+            + ''.join([
+                indent(2) + 'std::cout << "' + var.name + ' = " << blackboard->get<' + variable_type_map[var.name] + '>("' + var.name + '") << std::endl;' + os.linesep
+                for var in model.variables if is_blackboard(var)
+            ])
+            + indent(1) + '}' + os.linesep
+            + os.linesep
+            + indent(1) + 'return 0;' + os.linesep
+            + '}' + os.linesep
         )
         return return_string
 
-    def write_environment(model):
-        def env_handle_environment_check(node):
-            misc_args = create_misc_args(False, 'environment', 2)
-            return (
-                os.linesep
-                + indent(1) + 'def ' + node.name + '(self, node):' + os.linesep
-                + indent(2) + "'''" + os.linesep
-                + indent(2) + '-- RETURN' + os.linesep
-                + indent(2) + 'This method is expected to return True or False.' + os.linesep
-                + indent(2) + 'This method is being modeled using the following behavior:' + os.linesep
-                + indent(2) + format_code(node.condition, misc_args)[0] + os.linesep
-                + indent(2) + '-- SIDE EFFECTS' + os.linesep
-                + indent(2) + 'This method is expected to have no side effects (for the tree).' + os.linesep
-                + indent(2) + "'''" + os.linesep
-                + indent(2) + '# below we include an auto generated attempt at implmenting this' + os.linesep
-                + indent(2) + 'return ' + format_code(node.condition, misc_args)[0] + os.linesep
-            )
+    def write_environment_header(model):
+        """Generate Environment.h for C++"""
+        # Get environment variables
+        env_vars = [var for var in model.variables if is_env(var)]
 
-        def env_handle_read_statement(statement):
-            misc_args = create_misc_args(False, 'environment', 2)
-            return (
-                os.linesep
-                + indent(1) + 'def ' + statement.name + '__condition(self, node):' + os.linesep
-                + indent(2) + 'if ' + format_code(statement.condition, misc_args)[0] + ':' + os.linesep
-                + indent(3) + 'return '
-                + (
-                    'random.choice([True, False])'
-                    if statement.non_determinism else
-                    'True'
-                ) + os.linesep
-                + indent(2) + 'else:' + os.linesep
-                + indent(3) + 'return False' + os.linesep
-                + os.linesep
-                + ''.join(
-                    [
-                        (
-                            os.linesep
-                            + indent(1) + 'def ' + statement.name + '__' + str(index) + '(self, node):' + os.linesep
-                            + indent(2) + 'return ' + handle_variable_statement(read_var_state, misc_args, assign_to_var = False) + os.linesep
-                        )
-                        for index, read_var_state in enumerate(statement.variable_statements)
-                    ]
-                )
-            )
-
-        def env_handle_write_statement(statement):
-            misc_args = create_misc_args(False, 'environment', 2)
-            return ''.join(
-                [
-                    (
-                        os.linesep
-                        + indent(1) + 'def ' + statement.name + '__' + str(index) + '(self, node):' + os.linesep
-                        + handle_variable_statement(env_update, misc_args, assign_to_var = True)
-                        + indent(2) + 'return' + os.linesep
-                    )
-                    for index, env_update in enumerate(statement.update)
-                ]
-            )
-
-        update_misc_args = create_misc_args(False, 'environment', 2)
-        initial_misc_args = create_misc_args(True, 'environment', 2)
-        to_write = (
-            'from pathlib import Path' + os.linesep
-            + 'import random' + os.linesep
-            + (('import onnxruntime' + os.linesep) if model.neural is not None else '')
-            + (('import serene_safe_assignment' + os.linesep) if safe_assignment else '')
-            + os.linesep + os.linesep
-            + 'class ' + project_environment_name + '():' + os.linesep
-            + indent(1) + 'def delay_this_action(self, action, node):' + os.linesep
-            + indent(2) + 'self.delayed_action_queue.append((action, node))' + os.linesep
+        return_string = (
+            '#ifndef ENVIRONMENT_H' + os.linesep
+            + '#define ENVIRONMENT_H' + os.linesep
             + os.linesep
-            + indent(1) + 'def execute_delayed_action_queue(self):' + os.linesep
-            + indent(2) + 'for (delayed_action, node) in self.delayed_action_queue:' + os.linesep
-            + indent(3) + 'delayed_action(node)' + os.linesep
-            + indent(2) + 'self.delayed_action_queue = []' + os.linesep
-            + indent(2) + 'return' + os.linesep
+            + '#include <vector>' + os.linesep
+            + '#include <functional>' + os.linesep
             + os.linesep
-            + indent(1) + 'def pre_tick_environment_update(self):' + os.linesep
-            + indent(2) + 'node = None' + os.linesep
-            + ''.join(
-                [
-                    handle_variable_statement(update, update_misc_args, assign_to_var = True)
-                    for update in model.update if update.instant
-                ]
-            )
-            + indent(2) + 'return' + os.linesep
+            + 'class Environment {' + os.linesep
+            + 'private:' + os.linesep
+            + ''.join([
+                indent(1) + variable_type_map[var.name] + ' ' + var.name + ';' + os.linesep
+                for var in env_vars
+            ])
             + os.linesep
-            + indent(1) + 'def post_tick_environment_update(self):' + os.linesep
-            + indent(2) + 'node = None' + os.linesep
-            + ''.join(
-                [
-                    handle_variable_statement(update, update_misc_args, assign_to_var = True)
-                    for update in model.update if not update.instant
-                ]
-            )
-            + indent(2) + 'return' + os.linesep
+            + 'public:' + os.linesep
+            + indent(1) + 'Environment();' + os.linesep
+            + indent(1) + 'void initialize();' + os.linesep
+            + indent(1) + 'void pre_tick_update();' + os.linesep
+            + indent(1) + 'void post_tick_update();' + os.linesep
+            + indent(1) + 'bool check_tick_condition();' + os.linesep
+            + ''.join([
+                indent(1) + variable_type_map[var.name] + ' get_' + var.name + '() const { return ' + var.name + '; }' + os.linesep
+                + indent(1) + 'void set_' + var.name + '(' + variable_type_map[var.name] + ' value) { ' + var.name + ' = value; }' + os.linesep
+                for var in env_vars
+            ])
+            + '};' + os.linesep
             + os.linesep
-            + indent(1) + 'def check_tick_condition(self):' + os.linesep
-            + (
-                (indent(2) + 'return True' + os.linesep)
-                if model.tick_condition is None else
-                (indent(2) + 'return ' + format_code(model.tick_condition, update_misc_args)[0] + os.linesep)
-            )
-            + os.linesep
-            + indent(1) + 'def __init__(self, blackboard):' + os.linesep
-            + indent(2) + 'self.blackboard = blackboard' + os.linesep
-            + indent(2) + 'self.delayed_action_queue = []' + os.linesep
-            + (os.linesep if any(map(is_env, model.variables)) else '')
-            + ''.join([(indent(2) + 'self.' + variable.name + ' = None' + os.linesep) for variable in model.variables if is_env(variable)])
-            + indent(2) + 'return' + os.linesep + os.linesep
-            + indent(1) + 'def initialize_environment(self):' + os.linesep
-            + indent(2) + 'node = None' + os.linesep
-            + ''.join(
-                [
-                    create_neural_network(variable, initial_misc_args)
-                    if variable.model_as == 'NEURAL' else
-                    (
-                        create_variable_macro(variable, initial_misc_args)
-                        if variable.model_as == 'DEFINE' and variable.static != 'static' else
-                        (
-                            (
-                                (indent(2) + format_variable(variable, initial_misc_args) + ' = [' + (handle_assign(variable.default_value, initial_misc_args) if variable.iterative_assign != 'iterative_assign' else 'None') + ' for _ in range(' + str(variable_array_size_map[variable.name]) + ')]' + os.linesep)
-                                if is_array(variable) else
-                                ''
-                            ) + handle_variable_statement(variable, initial_misc_args, assign_to_var = True)
-                        )
-                    )
-                    for variable in model.variables if is_env(variable)
-                ]
-            )
-            + indent(2) + 'return' + os.linesep + os.linesep
+            + '#endif' + os.linesep
         )
-        for environment_check in model.environment_checks:
-            to_write += env_handle_environment_check(environment_check)
-        for action in model.action_nodes:
-            for statement in itertools.chain(action.pre_update_statements, action.post_update_statements):
-                if statement.variable_statement is not None or statement.monitor_statement is not None:
-                    continue
-                to_write += (
-                    env_handle_read_statement(statement.read_statement)
-                    if statement.read_statement is not None else
-                    env_handle_write_statement(statement.write_statement)
-                )
-        nonlocal long_if_to_write
-        long_if_statements = (os.linesep).join(long_if_to_write)
-        long_if_to_write = []
-        to_write += long_if_statements
-        return to_write
+        return return_string
+
+    def write_environment_source(model):
+        """Generate Environment.cpp for C++"""
+        initial_misc_args = create_misc_args(True, 'environment', 1)
+        update_misc_args = create_misc_args(False, 'environment', 1)
+
+        # Get environment variables
+        env_vars = [var for var in model.variables if is_env(var)]
+
+        # Initialize environment variables
+        init_code = ''
+        for var in env_vars:
+            if hasattr(var, 'default_value') and var.default_value is not None:
+                init_value = handle_assign(var.default_value, initial_misc_args)
+                init_code += indent(1) + var.name + ' = ' + init_value + ';' + os.linesep
+            else:
+                init_code += indent(1) + var.name + ' = 0;' + os.linesep
+
+        # Pre-tick updates
+        pre_tick_code = ''
+        for update in model.update:
+            if hasattr(update, 'instant') and update.instant:
+                pre_tick_code += handle_variable_statement(update, update_misc_args, assign_to_var = True)
+
+        # Post-tick updates
+        post_tick_code = ''
+        for update in model.update:
+            if hasattr(update, 'instant') and not update.instant:
+                post_tick_code += handle_variable_statement(update, update_misc_args, assign_to_var = True)
+
+        # Tick condition
+        tick_condition = 'return true;'
+        if model.tick_condition is not None:
+            tick_condition = 'return ' + format_code(model.tick_condition, update_misc_args)[0] + ';'
+
+        return_string = (
+            '#include "Environment.h"' + os.linesep
+            + os.linesep
+            + 'Environment::Environment() {' + os.linesep
+            + ''.join([indent(1) + var.name + ' = 0;' + os.linesep for var in env_vars])
+            + '}' + os.linesep
+            + os.linesep
+            + 'void Environment::initialize() {' + os.linesep
+            + init_code
+            + '}' + os.linesep
+            + os.linesep
+            + 'void Environment::pre_tick_update() {' + os.linesep
+            + (pre_tick_code if pre_tick_code else indent(1) + '// No pre-tick updates' + os.linesep)
+            + '}' + os.linesep
+            + os.linesep
+            + 'void Environment::post_tick_update() {' + os.linesep
+            + (post_tick_code if post_tick_code else indent(1) + '// No post-tick updates' + os.linesep)
+            + '}' + os.linesep
+            + os.linesep
+            + 'bool Environment::check_tick_condition() {' + os.linesep
+            + indent(1) + tick_condition + os.linesep
+            + '}' + os.linesep
+        )
+        return return_string
+
+    def write_cmake(model, project_name):
+        """Generate CMakeLists.txt for building the C++ project"""
+        # Collect all source files
+        sources = ['main.cpp', 'Environment.cpp']
+        for node in itertools.chain(model.check_nodes, model.action_nodes, model.environment_checks):
+            sources.append(node.name + '.cpp')
+
+        return_string = (
+            'cmake_minimum_required(VERSION 3.10)' + os.linesep
+            + 'project(' + project_name + ')' + os.linesep
+            + os.linesep
+            + '# Set C++ standard' + os.linesep
+            + 'set(CMAKE_CXX_STANDARD 17)' + os.linesep
+            + 'set(CMAKE_CXX_STANDARD_REQUIRED ON)' + os.linesep
+            + os.linesep
+            + '# Find BehaviorTree.CPP' + os.linesep
+            + 'find_package(BehaviorTreeV3 REQUIRED)' + os.linesep
+            + os.linesep
+            + '# Add executable' + os.linesep
+            + 'add_executable(' + project_name + os.linesep
+            + ''.join([indent(1) + src + os.linesep for src in sources])
+            + ')' + os.linesep
+            + os.linesep
+            + '# Link libraries' + os.linesep
+            + 'target_link_libraries(' + project_name + os.linesep
+            + indent(1) + 'BT::behaviortree_cpp' + os.linesep
+            + ')' + os.linesep
+            + os.linesep
+            + '# Copy tree.xml to build directory' + os.linesep
+            + 'configure_file(${CMAKE_CURRENT_SOURCE_DIR}/tree.xml ${CMAKE_CURRENT_BINARY_DIR}/tree.xml COPYONLY)' + os.linesep
+        )
+        return return_string
 
     function_format = {
         # TODO: check if these are actually correct. They might be somewhat off (specifically the library ones)
@@ -1697,16 +1806,27 @@ def dsl_to_cpp(metamodel_file, model_file, main_name, write_location, serene_pri
             write_file.write(create_check_node_header(check))
     for environment_check in model.environment_checks:
         with open(write_location + environment_check.name + '.cpp', 'w', encoding = 'utf-8') as write_file:
-            write_file.write(build_environment_check_node(environment_check))
+            write_file.write(create_environment_check_node_source_code(environment_check))
+        with open(write_location + environment_check.name + '.h', 'w', encoding = 'utf-8') as write_file:
+            write_file.write(create_environment_check_node_header(environment_check))
 
-    (root_name, _, running_string, local_print_info) = walk_tree_recursive(model.root, set(), '', {})
+    # Generate tree XML
+    with open(write_location + 'tree.xml', 'w', encoding = 'utf-8') as write_file:
+        write_file.write(write_tree_xml(model))
 
-    with open(write_location + project_name + 'Main.cpp', 'w', encoding = 'utf-8') as write_file:
-        write_file.write(write_blackboard(model, running_string))
-    with open(write_location + project_name + 'Runner.cpp', 'w', encoding = 'utf-8') as write_file:
-        write_file.write(create_runner(list(filter(is_blackboard, model.variables)), list(filter(is_env, model.variables)), local_print_info))
-    with open(write_location + project_environment_name + '.cpp', 'w', encoding = 'utf-8') as write_file:
-        write_file.write(write_environment(model))
+    # Generate main.cpp
+    with open(write_location + 'main.cpp', 'w', encoding = 'utf-8') as write_file:
+        write_file.write(write_blackboard(model, ''))  # running_string not needed for C++
+
+    # Generate Environment files
+    with open(write_location + 'Environment.h', 'w', encoding = 'utf-8') as write_file:
+        write_file.write(write_environment_header(model))
+    with open(write_location + 'Environment.cpp', 'w', encoding = 'utf-8') as write_file:
+        write_file.write(write_environment_source(model))
+
+    # Generate CMakeLists.txt
+    with open(write_location + 'CMakeLists.txt', 'w', encoding = 'utf-8') as write_file:
+        write_file.write(write_cmake(model, project_name))
     return
 
 
