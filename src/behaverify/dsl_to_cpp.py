@@ -300,7 +300,7 @@ def dsl_to_cpp(metamodel_file, model_file, main_name, write_location, serene_pri
                 (os.linesep).join(map(lambda arg_pair: indent(2) + to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name + ';', node.arguments))
             ) + os.linesep
             + indent(1) + 'public:' + os.linesep
-            + indent(2) + node.name + '(const std::string& name, const BT::NodeConfiguration& config' + ((', ' + ', '.join(map(lambda arg_pair: to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name, node.arguments))) if len(node.arguments) > 0 else '') + ') : BT::ConditionNode(name, config);' + os.linesep
+            + indent(2) + node.name + '(const std::string& name, const BT::NodeConfiguration& config' + ((', ' + ', '.join(map(lambda arg_pair: to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name, node.arguments))) if len(node.arguments) > 0 else '') + ');' + os.linesep
             + indent(2) + 'static BT::PortsList providedPorts();' + os.linesep
             + indent(2) + 'BT::NodeStatus tick() override;' + os.linesep
             + '};' + os.linesep
@@ -918,7 +918,7 @@ def dsl_to_cpp(metamodel_file, model_file, main_name, write_location, serene_pri
                 (os.linesep).join(map(lambda arg_pair: indent(2) + to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name + ';', node.arguments))
             ) + os.linesep
             + indent(1) + 'public:' + os.linesep
-            + indent(2) + node.name + '(const std::string& name, const BT::NodeConfiguration& config' + ((', ' + ', '.join(map(lambda arg_pair: to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name, node.arguments))) if len(node.arguments) > 0 else '') + ') : BT::SyncActionNode(name, config);' + os.linesep
+            + indent(2) + node.name + '(const std::string& name, const BT::NodeConfiguration& config' + ((', ' + ', '.join(map(lambda arg_pair: to_cpp_type(arg_pair.argument_type) + ' arg_' + arg_pair.argument_name, node.arguments))) if len(node.arguments) > 0 else '') + ');' + os.linesep
             + indent(2) + 'static BT::PortsList providedPorts();' + os.linesep
             + indent(2) + 'BT::NodeStatus tick() override;' + os.linesep
             + '};' + os.linesep
