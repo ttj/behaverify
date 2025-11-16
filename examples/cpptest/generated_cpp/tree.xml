@@ -1,0 +1,30 @@
+<root BTCPP_format="4">
+  <BehaviorTree ID="MainTree">
+    <Sequence name="main_sequence">
+      <Sequence name="get_key_sequence">
+        <Inverter name="repeat_move_to_key">
+          <need_move_to_key name="need_move_to_key" agent_x="{agent_x}" agent_y="{agent_y}" has_key="{has_key}"/>
+        </Inverter>
+        <move_toward_key name="move_toward_key" agent_x="{agent_x}" agent_y="{agent_y}" step_count="{step_count}"/>
+        <at_key name="at_key" agent_x="{agent_x}" agent_y="{agent_y}"/>
+        <pick_up_key name="pick_up_key" has_key="{has_key}" step_count="{step_count}"/>
+      </Sequence>
+      <Sequence name="get_to_door_sequence">
+        <Inverter name="repeat_move_to_door">
+          <need_move_to_door name="need_move_to_door" agent_x="{agent_x}" agent_y="{agent_y}" has_key="{has_key}" door_unlocked="{door_unlocked}"/>
+        </Inverter>
+        <move_toward_door name="move_toward_door" agent_x="{agent_x}" agent_y="{agent_y}" step_count="{step_count}"/>
+        <at_door name="at_door" agent_x="{agent_x}" agent_y="{agent_y}"/>
+        <has_key_check name="has_key_check" has_key="{has_key}"/>
+        <unlock_door name="unlock_door" door_unlocked="{door_unlocked}" step_count="{step_count}"/>
+      </Sequence>
+      <Sequence name="reach_target_sequence">
+        <Inverter name="repeat_move_to_target">
+          <need_move_to_target name="need_move_to_target" agent_x="{agent_x}" agent_y="{agent_y}" door_unlocked="{door_unlocked}"/>
+        </Inverter>
+        <move_toward_target name="move_toward_target" agent_x="{agent_x}" agent_y="{agent_y}" step_count="{step_count}"/>
+        <at_target name="at_target" agent_x="{agent_x}" agent_y="{agent_y}"/>
+      </Sequence>
+    </Sequence>
+  </BehaviorTree>
+</root>
