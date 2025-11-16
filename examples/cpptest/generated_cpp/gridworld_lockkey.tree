@@ -1,0 +1,236 @@
+configuration {
+    #{ Gridworld: 5x5 grid with agent, key, door, and target }#
+}
+
+enumerations {}
+
+constants {
+    grid_size := 5,
+    key_x := 1,
+    key_y := 1,
+    door_x := 2,
+    door_y := 2,
+    target_x := 4,
+    target_y := 4
+}
+
+variables {
+    variable { bl agent_x VAR [0, 4] assign{result{0}}}
+    variable { bl agent_y VAR [0, 4] assign{result{0}}}
+    variable { bl has_key VAR [0, 1] assign{result{0}}}
+    variable { bl door_unlocked VAR [0, 1] assign{result{0}}}
+    variable { bl step_count VAR [0, 100] assign{result{0}}}
+}
+
+environment_update {}
+
+checks {
+    check { at_key
+        arguments {}
+        read_variables {agent_x, agent_y}
+        condition {(and, (eq, agent_x, key_x), (eq, agent_y, key_y))}
+    }
+
+    check { at_door
+        arguments {}
+        read_variables {agent_x, agent_y}
+        condition {(and, (eq, agent_x, door_x), (eq, agent_y, door_y))}
+    }
+
+    check { at_target
+        arguments {}
+        read_variables {agent_x, agent_y}
+        condition {(and, (eq, agent_x, target_x), (eq, agent_y, target_y))}
+    }
+
+    check { has_key_check
+        arguments {}
+        read_variables {has_key}
+        condition {(eq, has_key, 1)}
+    }
+
+    check { door_unlocked_check
+        arguments {}
+        read_variables {door_unlocked}
+        condition {(eq, door_unlocked, 1)}
+    }
+
+    check { need_move_to_key
+        arguments {}
+        read_variables {agent_x, agent_y, has_key}
+        condition {(and, (eq, has_key, 0), (or, (neq, agent_x, key_x), (neq, agent_y, key_y)))}
+    }
+
+    check { need_move_to_door
+        arguments {}
+        read_variables {agent_x, agent_y, has_key, door_unlocked}
+        condition {(and, (eq, has_key, 1), (eq, door_unlocked, 0), (or, (neq, agent_x, door_x), (neq, agent_y, door_y)))}
+    }
+
+    check { need_move_to_target
+        arguments {}
+        read_variables {agent_x, agent_y, door_unlocked}
+        condition {(and, (eq, door_unlocked, 1), (or, (neq, agent_x, target_x), (neq, agent_y, target_y)))}
+    }
+}
+
+environment_checks {}
+
+actions {
+    action { move_toward_key
+        arguments {}
+        local_variables{}
+        read_variables{agent_x, agent_y, step_count}
+        write_variables{agent_x, agent_y, step_count}
+        initial_values{}
+        update{
+            variable_statement { agent_x assign{
+                case {(lt, agent_x, key_x)} result{(add, agent_x, 1)}
+                case {(gt, agent_x, key_x)} result{(sub, agent_x, 1)}
+                result{agent_x}
+            }}
+            variable_statement { agent_y assign{
+                case {(and, (eq, agent_x, key_x), (lt, agent_y, key_y))} result{(add, agent_y, 1)}
+                case {(and, (eq, agent_x, key_x), (gt, agent_y, key_y))} result{(sub, agent_y, 1)}
+                result{agent_y}
+            }}
+            variable_statement { step_count assign{result{(add, step_count, 1)}}}
+            return_statement{result{success}}
+        }
+    }
+
+    action { pick_up_key
+        arguments {}
+        local_variables{}
+        read_variables{has_key, step_count}
+        write_variables{has_key, step_count}
+        initial_values{}
+        update{
+            variable_statement { has_key assign{result{1}}}
+            variable_statement { step_count assign{result{(add, step_count, 1)}}}
+            return_statement{result{success}}
+        }
+    }
+
+    action { move_toward_door
+        arguments {}
+        local_variables{}
+        read_variables{agent_x, agent_y, step_count}
+        write_variables{agent_x, agent_y, step_count}
+        initial_values{}
+        update{
+            variable_statement { agent_x assign{
+                case {(lt, agent_x, door_x)} result{(add, agent_x, 1)}
+                case {(gt, agent_x, door_x)} result{(sub, agent_x, 1)}
+                result{agent_x}
+            }}
+            variable_statement { agent_y assign{
+                case {(and, (eq, agent_x, door_x), (lt, agent_y, door_y))} result{(add, agent_y, 1)}
+                case {(and, (eq, agent_x, door_x), (gt, agent_y, door_y))} result{(sub, agent_y, 1)}
+                result{agent_y}
+            }}
+            variable_statement { step_count assign{result{(add, step_count, 1)}}}
+            return_statement{result{success}}
+        }
+    }
+
+    action { unlock_door
+        arguments {}
+        local_variables{}
+        read_variables{door_unlocked, step_count}
+        write_variables{door_unlocked, step_count}
+        initial_values{}
+        update{
+            variable_statement { door_unlocked assign{result{1}}}
+            variable_statement { step_count assign{result{(add, step_count, 1)}}}
+            return_statement{result{success}}
+        }
+    }
+
+    action { move_toward_target
+        arguments {}
+        local_variables{}
+        read_variables{agent_x, agent_y, step_count}
+        write_variables{agent_x, agent_y, step_count}
+        initial_values{}
+        update{
+            variable_statement { agent_x assign{
+                case {(lt, agent_x, target_x)} result{(add, agent_x, 1)}
+                case {(gt, agent_x, target_x)} result{(sub, agent_x, 1)}
+                result{agent_x}
+            }}
+            variable_statement { agent_y assign{
+                case {(and, (eq, agent_x, target_x), (lt, agent_y, target_y))} result{(add, agent_y, 1)}
+                case {(and, (eq, agent_x, target_x), (gt, agent_y, target_y))} result{(sub, agent_y, 1)}
+                result{agent_y}
+            }}
+            variable_statement { step_count assign{result{(add, step_count, 1)}}}
+            return_statement{result{success}}
+        }
+    }
+}
+
+sub_trees {}
+
+tree {
+    composite {
+        main_sequence
+        sequence
+        children {
+            composite {
+                get_key_sequence
+                sequence
+                children {
+                    decorator {
+                        repeat_move_to_key
+                        inverter
+                        child {
+                            need_move_to_key {}
+                        }
+                    }
+                    move_toward_key {}
+                    at_key {}
+                    pick_up_key {}
+                }
+            }
+            composite {
+                get_to_door_sequence
+                sequence
+                children {
+                    decorator {
+                        repeat_move_to_door
+                        inverter
+                        child {
+                            need_move_to_door {}
+                        }
+                    }
+                    move_toward_door {}
+                    at_door {}
+                    has_key_check {}
+                    unlock_door {}
+                }
+            }
+            composite {
+                reach_target_sequence
+                sequence
+                children {
+                    decorator {
+                        repeat_move_to_target
+                        inverter
+                        child {
+                            need_move_to_target {}
+                        }
+                    }
+                    move_toward_target {}
+                    at_target {}
+                }
+            }
+        }
+    }
+}
+
+tick_prerequisite {
+    (lt, step_count, 50)
+}
+
+specifications {}
